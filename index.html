@@ -366,8 +366,8 @@ input{font-family:'DM Sans',sans-serif;}
         <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">Client ID (Azure App)</label><input id="cfg-client" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="bfb978c2-2df7-4598-8b29-63df63f724cc"/></div>
         <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">Tenant ID (Azure)</label><input id="cfg-tenant" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="34f5f15c-d8ec-4aaa-8240-5b8a5cd8fbb1"/></div>
         <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">SharePoint Site Host</label><input id="cfg-site" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="sun108.sharepoint.com"/></div>
-        <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">SharePoint Site Name</label><input id="cfg-site-name" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="ITRDmanagement"/></div>
-        <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">Path โฟลเดอร์ Model (ใน Documents)</label><input id="cfg-model-path" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="RD/Knowledge/Used Can Database/CDB(Web app)/Model"/></div>
+        <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">SharePoint Site Name</label><input id="cfg-site-name" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="RDSpace"/></div>
+        <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">Path โฟลเดอร์ Model (ใน Documents)</label><input id="cfg-model-path" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="Used Can Database/Model"/></div>
         <div><label style="font-size:13px;font-weight:600;color:var(--g800);display:block;margin-bottom:5px;">ชื่อไฟล์ Excel หลัก</label><input id="cfg-excel-name" style="width:100%;padding:10px 14px;border:1px solid var(--g200);border-radius:8px;font-size:13px;color:var(--g800);outline:none;" value="Used_Can_Web_v2.xlsx"/></div>
       </div>
       <button class="btn btn-red btn-full" style="margin-top:20px;" onclick="saveConfig()">💾 บันทึกการตั้งค่า</button>
@@ -537,7 +537,7 @@ input{font-family:'DM Sans',sans-serif;}
 // ════════════════════════════════════════════════
 //  CONFIG
 // ════════════════════════════════════════════════
-let CFG={clientId:"bfb978c2-2df7-4598-8b29-63df63f724cc",tenantId:"34f5f15c-d8ec-4aaa-8240-5b8a5cd8fbb1",spSite:"sun108.sharepoint.com",spSiteName:"ITRDmanagement",modelPath:"RD/Knowledge/Used Can Database/CDB(Web app)/Model",excelName:"Used_Can_Web_v2.xlsx",excelPath:"RD/Knowledge/Used Can Database/CDB(Web app)",redirectUri:"https://rd-svt.github.io/Can-Database-CDB2/"};
+let CFG={clientId:"bfb978c2-2df7-4598-8b29-63df63f724cc",tenantId:"34f5f15c-d8ec-4aaa-8240-5b8a5cd8fbb1",spSite:"sun108.sharepoint.com",spSiteName:"RDSpace",modelPath:"Used Can Database/Model",excelName:"Used_Can_Web_v2.xlsx",excelPath:"Used Can Database",redirectUri:"https://rd-svt.github.io/Can-Database-CDB2/"};
 const PS_BASE=[
   {key:"nameplate",label:"Nameplate",sub:"ป้ายข้อมูลหลักของตู้",prefix:"Nameplate",icon:"🏷️"},
   {key:"other_nameplate",label:"Other Nameplate",sub:"ป้ายข้อมูลเพิ่มเติม",prefix:"OtherNameplate",icon:"📋"},
@@ -1210,8 +1210,8 @@ async function listSpFolder(folderPath){
 // ════════════════════════════════════════════════
 (function init(){
   const sc=localStorage.getItem("sp_config");if(sc)try{CFG={...CFG,...JSON.parse(sc)};}catch{}
-  CFG.modelPath="RD/Knowledge/Used Can Database/CDB(Web app)/Model";
-  CFG.excelPath="RD/Knowledge/Used Can Database/CDB(Web app)";
+  CFG.modelPath="Used Can Database/Model";
+  CFG.excelPath="Used Can Database";
   CFG.excelName="Used_Can_Web_v2.xlsx";
   const sr=localStorage.getItem("cabinet_records");
   if(sr)try{records=JSON.parse(sr).map(r=>({...r,photos:Object.fromEntries(PS.map(p=>[p.key,(r.photos?.[p.key]||[]).map(ph=>({savedName:ph.savedName||"",name:ph.name||"",preview:""}))]))}));}catch{}
