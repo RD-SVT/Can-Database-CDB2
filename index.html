@@ -1433,6 +1433,13 @@ async function listSpFolder(folderPath){
 //  INIT
 // ════════════════════════════════════════════════
 (function init(){
+  // Inside MSAL's login pop-up: do nothing. The main window reads #code=… from this URL and closes the pop-up.
+  // (Running the app here — especially handleRedirectPromise — would consume the hash and the pop-up would never close.)
+  if(window.opener&&window.opener!==window&&(/^msal\./.test(window.name||"")||/(^#|&)(code|error)=/.test(location.hash))){
+    document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#525252;font-size:14px;padding:24px;text-align:center">กำลังเข้าสู่ระบบ หน้าต่างนี้จะปิดเอง</div>';
+    window.__CDB_BOOTED=true;
+    return;
+  }
   let sc=null,sr=null;
   try{sc=localStorage.getItem("sp_config");sr=localStorage.getItem("cabinet_records");}catch(e){setTimeout(()=>showErrorModal(appErr("E-STORAGE",e.message),"เปิดแอป"),0);}
   if(sc)try{CFG={...CFG,...JSON.parse(sc)};}catch{}
