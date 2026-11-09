@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://alcdn.msauth.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src https://graph.microsoft.com https://login.microsoftonline.com; frame-src https://login.microsoftonline.com; object-src 'none'; base-uri 'none'; form-action 'none'"/>
 <meta name="referrer" content="no-referrer"/>
 <title>SUN VENDING — Cabinet Database</title>
 <script>
@@ -1433,13 +1432,6 @@ async function listSpFolder(folderPath){
 //  INIT
 // ════════════════════════════════════════════════
 (function init(){
-  // Inside MSAL's login pop-up: do nothing. The main window reads #code=… from this URL and closes the pop-up.
-  // (Running the app here — especially handleRedirectPromise — would consume the hash and the pop-up would never close.)
-  if(window.opener&&window.opener!==window&&(/^msal\./.test(window.name||"")||/(^#|&)(code|error)=/.test(location.hash))){
-    document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#525252;font-size:14px;padding:24px;text-align:center">กำลังเข้าสู่ระบบ หน้าต่างนี้จะปิดเอง</div>';
-    window.__CDB_BOOTED=true;
-    return;
-  }
   let sc=null,sr=null;
   try{sc=localStorage.getItem("sp_config");sr=localStorage.getItem("cabinet_records");}catch(e){setTimeout(()=>showErrorModal(appErr("E-STORAGE",e.message),"เปิดแอป"),0);}
   if(sc)try{CFG={...CFG,...JSON.parse(sc)};}catch{}
@@ -1457,19 +1449,11 @@ async function listSpFolder(folderPath){
   renderEnvBanner();bindEnvCopy();
   renderErrRef();
   try{
-    const app=getMsal();
-    app.handleRedirectPromise().then(res=>{
-      if(res){setAuth(res);return;}
-      const accs=app.getAllAccounts();
-      if(accs.length)return app.acquireTokenSilent({scopes:SCOPES,account:accs[0]}).then(setAuth).catch(e=>console.warn("silent",e));
-    }).then(()=>{
-      updateUserUI();
-      if(!accessToken)return;
-      syncFromSharePoint();
-      let nxt=null;try{nxt=sessionStorage.getItem("cdb_after_login");sessionStorage.removeItem("cdb_after_login");}catch{}
-      if(nxt==="wizard")startWizard();
-    }).catch(e=>{updateUserUI();showErrorModal(e,"เข้าสู่ระบบ (กลับจากหน้า Microsoft)");});
-  }catch(e){updateUserUI();showErrorModal(e,"เริ่มระบบเข้าสู่ระบบ");}
+    const app=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri},cache:{cacheLocation:"sessionStorage"}});
+    const accs=app.getAllAccounts();
+    if(accs.length){msalApp=app;app.acquireTokenSilent({scopes:["Files.ReadWrite.All","Sites.ReadWrite.All"],account:accs[0]}).then(r=>{accessToken=r.accessToken;currentUser=accs[0].name||accs[0].username;_cachedDriveId=null;updateUserUI();syncFromSharePoint();}).catch(()=>updateUserUI());}
+    else updateUserUI();
+  }catch(e){updateUserUI();}
   window.__CDB_BOOTED=true;
 })();
 function renderEnvBanner(){
@@ -1511,52 +1495,10 @@ function saveConfig(){CFG.clientId=document.getElementById("cfg-client").value.t
 // ════════════════════════════════════════════════
 //  AUTH
 // ════════════════════════════════════════════════
-const SCOPES=["Files.ReadWrite.All","Sites.ReadWrite.All"];
-let tokenExp=0;
-function getMsal(){
-  if(typeof msal==="undefined") throw appErr("E-LIB","msal-browser not loaded");
-  if(!msalApp)msalApp=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri,navigateToLoginRequestUrl:false},cache:{cacheLocation:"sessionStorage"}});
-  return msalApp;
-}
-function setAuth(r){
-  accessToken=r.accessToken;
-  tokenExp=r.expiresOn?new Date(r.expiresOn).getTime():Date.now()+50*60e3;
-  if(r.account){currentUser=r.account.name||r.account.username;try{msalApp.setActiveAccount(r.account);}catch{}}
-  _cachedDriveId=null;updateUserUI();
-}
-// มือถือ / PWA หน้าจอโฮม / in-app browser: pop-up มักพัง → ใช้ redirect (เปิดหน้า Microsoft เต็มหน้า แล้วกลับมา)
-const preferRedirect=()=>{const E=window.__CDB_ENV||{};return !!(E.mobile||E.standalone||E.inApp);};
-async function doLogin(fromWiz=false){
-  try{
-    const app=getMsal();
-    if(preferRedirect()&&!fromWiz){await app.loginRedirect({scopes:SCOPES,prompt:"select_account"});return false;}
-    const r=await app.loginPopup({scopes:SCOPES});
-    setAuth(r);if(!fromWiz)syncFromSharePoint();return true;
-  }catch(e){
-    // pop-up ถูกบล็อก → ถ้าไม่ได้อยู่กลางการกรอกข้อมูล เปลี่ยนเป็น redirect ให้เอง
-    if(!fromWiz&&/popup_window_error|empty_window_error|monitor_window_timeout/.test(e?.errorCode||"")){
-      try{await getMsal().loginRedirect({scopes:SCOPES});return false;}catch(e2){e=e2;}
-    }
-    showErrorModal(e,"เข้าสู่ระบบ");return false;
-  }
-}
-// ต่ออายุ token เงียบๆ ก่อนหมด (token มีอายุ ~1 ชม.) ; interactive=false จะไม่เปิดหน้าต่างล็อกอิน
-async function ensureToken(interactive=true){
-  if(accessToken&&Date.now()<tokenExp-5*60e3)return true;
-  try{
-    const app=getMsal();const acc=app.getActiveAccount()||app.getAllAccounts()[0];
-    if(acc){setAuth(await app.acquireTokenSilent({scopes:SCOPES,account:acc}));return true;}
-  }catch(e){console.warn("acquireTokenSilent",e);}
-  if(!interactive)return !!accessToken;
-  return doLogin(true); // pop-up: ไม่ออกจากหน้า จะได้ไม่เสียรูปที่ถ่ายไว้
-}
-function doLogout(){
-  try{const app=msalApp||getMsal();const acc=app.getActiveAccount()||app.getAllAccounts()[0];
-    if(acc)app.logoutRedirect({account:acc,onRedirectNavigate:()=>false}); // clears cached tokens without leaving the page
-  }catch(e){console.warn("logout",e);}
-  try{Object.keys(sessionStorage).filter(k=>/msal|login\.windows|login\.microsoftonline/i.test(k)).forEach(k=>sessionStorage.removeItem(k));}catch{}
-  accessToken=null;tokenExp=0;currentUser=null;msalApp=null;_cachedDriveId=null;updateUserUI();showToast("ออกจากระบบแล้ว");
-}
+function getMsal(){if(!msalApp)msalApp=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri},cache:{cacheLocation:"sessionStorage"}});return msalApp;}
+async function doLogin(fromWiz=false){try{const r=await getMsal().loginPopup({scopes:["Files.ReadWrite.All","Sites.ReadWrite.All"]});accessToken=r.accessToken;currentUser=r.account.name||r.account.username;_cachedDriveId=null;updateUserUI();if(!fromWiz)syncFromSharePoint();return true;}catch(e){showErrorModal(e,"เข้าสู่ระบบ");return false;}}
+async function ensureToken(){if(accessToken)return true;return doLogin();}
+function doLogout(){accessToken=null;currentUser=null;msalApp=null;_cachedDriveId=null;updateUserUI();}
 function updateUserUI(){
   const loggedIn=!!currentUser;
   const s=(id,txt)=>{const el=document.getElementById(id);if(el){el.style.display=txt?"inline-flex":"none";if(txt)el.textContent=txt;}};
@@ -1570,7 +1512,6 @@ function updateUserUI(){
 // ════════════════════════════════════════════════
 async function syncFromSharePoint(){
   if(!accessToken)return;
-  await ensureToken(false);
   const btn=document.getElementById("btn-sync");if(btn){btn.innerHTML=I("loader-circle","sm spin")+'<span class="btn-label-hide">กำลังซิงค์</span>';btn.disabled=true;}
   try{
     const H={Authorization:"Bearer "+accessToken};
@@ -1675,7 +1616,6 @@ async function showDetail(idx){
 
   // ── yield ให้ browser paint ก่อน แล้วค่อยเริ่ม network ──
   await new Promise(res=>setTimeout(res,0));
-  await ensureToken(false);
 
   const hasAny=PS.some(p=>(r.photos?.[p.key]||[]).length>0);
   if(r.fromSP && !hasAny){
@@ -1838,7 +1778,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape")closeLightbox();});
 // ════════════════════════════════════════════════
 //  WIZARD (full — unchanged from original)
 // ════════════════════════════════════════════════
-function startWizard(){if(!accessToken&&preferRedirect()){try{sessionStorage.setItem("cdb_after_login","wizard");}catch{}showToast("เข้าสู่ระบบก่อนเพิ่มตู้");setTimeout(()=>doLogin(false),600);return;}PS_CUSTOM=[];PS=[...PS_BASE];TOTAL=getTotal();wizStep=0;wizData={brand:"",model:"",year:"",coolant:"",group:"",photos:{}};PS.forEach(p=>wizData.photos[p.key]=[]);showPage("wizard");renderWiz();updateUserUI();}
+function startWizard(){PS_CUSTOM=[];PS=[...PS_BASE];TOTAL=getTotal();wizStep=0;wizData={brand:"",model:"",year:"",coolant:"",group:"",photos:{}};PS.forEach(p=>wizData.photos[p.key]=[]);showPage("wizard");renderWiz();updateUserUI();}
 function cancelWizard(){document.getElementById("cancel-modal").style.display="flex";}
 function confirmCancel(){document.getElementById("cancel-modal").style.display="none";wizStep=0;wizData={brand:"",model:"",year:"",coolant:"",group:"",photos:{}};PS.forEach(p=>wizData.photos[p.key]=[]);showPage("list");}
 function renderWiz(){TOTAL=getTotal();const s=wizStep;document.getElementById("wiz-prog").style.width=Math.round((s/(TOTAL-1))*100)+"%";document.getElementById("wiz-step-num").textContent=(s+1)+" / "+TOTAL;let dots="";for(let i=0;i<TOTAL;i++)dots+=`<div class="dot ${i<3?"wide":""} ${i<s?"done":i===s?"active":"inactive"}"></div>`;document.getElementById("wiz-dots").innerHTML=dots;document.getElementById("wiz-btn-back").style.display=s>0?"flex":"none";document.getElementById("wiz-btn-skip").style.display=(s>=3&&s<TOTAL-1)?"block":"none";const isSummary=s===TOTAL-1;const nb=document.getElementById("wiz-btn-next");nb.className=isSummary?"btn btn-blue":"btn btn-red";nb.style.flex="2";nb.innerHTML=isSummary?I("cloud-upload","sm")+"อัปโหลดและบันทึก Excel":"ถัดไป"+I("arrow-right","sm");const c=document.getElementById("wiz-content");if(s===0)c.innerHTML=textStepHtml("Brand","ยี่ห้อตู้ เลือกหรือพิมพ์เอง","factory","wiz-brand",wizData.brand);else if(s===1)c.innerHTML=textStepHtml("Model","รหัสรุ่นตามป้าย Nameplate เช่น FE-KA36-LHPAP","hash","wiz-model",wizData.model);else if(s===2)c.innerHTML=textStepHtml("Year","ปีที่ผลิตตามป้าย Nameplate","calendar","wiz-year",wizData.year);else if(s<TOTAL-1){const pi=s-3;c.innerHTML=photoStepHtml(PS[pi]);bindDropZone(PS[pi].key);}else c.innerHTML=summaryHtml();if(s>=3&&s<TOTAL-1){document.getElementById("wiz-tracker").innerHTML=PS.map((p,i)=>{const state=i+3<s?"done":i+3===s?"active":"upcoming";const cnt=wizData.photos[p.key]?.length||0;const targetStep=i+3;const isCustom=PS_CUSTOM.find(c=>c.key===p.key);return `<div class="tracker-item ${state}" style="cursor:pointer;"><span onclick="wizGoTo(${targetStep})">${state==="done"&&cnt>0?I("check","sm"):""}${h(p.label)}${cnt>0?` <span class="tcount">${cnt}</span>`:""}</span>${isCustom?`<span class="tx" onclick="removeCustomSection('${p.key}')" title="ลบส่วนนี้">${I("x","sm")}</span>`:""}</div>`;}).join("")+`<div class="tracker-item add" onclick="promptAddSection()" style="cursor:pointer;">${I("plus","sm")}เพิ่มส่วน</div>`;}else document.getElementById("wiz-tracker").innerHTML="";}
