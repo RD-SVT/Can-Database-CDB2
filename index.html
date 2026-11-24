@@ -1473,7 +1473,7 @@ async function listSpFolder(folderPath){
   renderEnvBanner();bindEnvCopy();
   renderErrRef();
   try{
-    const app=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri},cache:{cacheLocation:"sessionStorage"}});
+    const app=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri},cache:{cacheLocation:"localStorage"}});
     const accs=app.getAllAccounts();
     if(accs.length){msalApp=app;app.acquireTokenSilent({scopes:["Files.ReadWrite.All","Sites.ReadWrite.All"],account:accs[0]}).then(r=>{accessToken=r.accessToken;currentUser=accs[0].name||accs[0].username;_cachedDriveId=null;updateUserUI();syncFromSharePoint();}).catch(()=>updateUserUI());}
     else updateUserUI();
@@ -1519,10 +1519,10 @@ function saveConfig(){CFG.clientId=document.getElementById("cfg-client").value.t
 // ════════════════════════════════════════════════
 //  AUTH
 // ════════════════════════════════════════════════
-function getMsal(){if(!msalApp)msalApp=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri},cache:{cacheLocation:"sessionStorage"}});return msalApp;}
+function getMsal(){if(!msalApp)msalApp=new msal.PublicClientApplication({auth:{clientId:CFG.clientId,authority:"https://login.microsoftonline.com/"+CFG.tenantId,redirectUri:CFG.redirectUri},cache:{cacheLocation:"localStorage"}});return msalApp;}
 async function doLogin(fromWiz=false){try{const r=await getMsal().loginPopup({scopes:["Files.ReadWrite.All","Sites.ReadWrite.All"]});accessToken=r.accessToken;currentUser=r.account.name||r.account.username;_cachedDriveId=null;updateUserUI();if(!fromWiz)syncFromSharePoint();return true;}catch(e){showErrorModal(e,"เข้าสู่ระบบ");return false;}}
-async function ensureToken(){if(accessToken)return true;return doLogin();}
-function doLogout(){accessToken=null;currentUser=null;msalApp=null;_cachedDriveId=null;updateUserUI();}
+async function refreshToken(){try{const app=getMsal();const acc=app.getAllAccounts()[0];if(!acc)return false;const r=await app.acquireTokenSilent({scopes:["Files.ReadWrite.All","Sites.ReadWrite.All"],account:acc});accessToken=r.accessToken;currentUser=acc.name||acc.username;updateUserUI();return true;}catch(e){return false;}}async function ensureToken(){if(await refreshToken())return true;return doLogin();}document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&currentUser)refreshToken();});setInterval(()=>{if(currentUser)refreshToken();},40*60*1000);
+async function doLogout(){if(!confirm("ออกจากระบบบนเครื่องนี้?"))return;try{const app=getMsal();const acc=app.getAllAccounts()[0];if(acc)await app.logoutRedirect({account:acc,onRedirectNavigate:()=>false});}catch(e){}accessToken=null;currentUser=null;msalApp=null;_cachedDriveId=null;updateUserUI();}
 function updateUserUI(){
   const loggedIn=!!currentUser;
   const s=(id,txt)=>{const el=document.getElementById(id);if(el){el.style.display=txt?"inline-flex":"none";if(txt)el.textContent=txt;}};
